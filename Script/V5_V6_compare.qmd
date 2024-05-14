@@ -1,0 +1,125 @@
+---
+title: "V5_V6_compare"
+author: "Simon Oiry"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r library}
+library(readxl)
+library(tidyverse)
+library(terra)
+```
+
+```{r filelist}
+
+
+V5_list <- list.files("Data/CCI/V5", pattern = ".nc", full.names = T) %>% 
+  as.data.frame() %>% 
+  rename(path = ".") %>% 
+  mutate(name = gsub(".*/","",path),
+         date = substr(name,1,8))
+
+V6_list <- list.files("Data/CCI/V6", pattern = ".nc", full.names = T) %>% 
+  as.data.frame() %>% 
+  rename(path = ".") %>% 
+  mutate(name = gsub(".*/","",path),
+         date = substr(name,1,8))
+
+if(length(unique(V5_list$date)) == length(unique(V6_list$date))){
+  print("There is the name number of images in V5 and in V6")
+}else{
+  print("There isn't the name number of images in V5 and in V6")
+  
+}
+if(nrow(V5_list)/6 == length(unique(V6_list$date))){
+    print("There is the name number of bands in V5 and in V6")
+
+}else{
+    print("There isn't the name number of bands in V5 and in V6")
+
+}
+
+```
+
+```{r compare}
+
+pts_all <- read_delim("Data/data_for_extraction_v6_match-ups.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE) %>% 
+  dplyr::select(c(Date_situ,lat,lon,rrs412_sat,	rrs443_sat,	rrs490_sat,	rrs510_sat,	rrs560_sat,	rrs665_sat,CCIV6_RRS412,	CCIV6_RRS443,	CCIV6_RRS490,	CCIV6_RRS510,	CCIV6_RRS560,	CCIV6_RRS665)) %>% 
+  rename(rrs412_V5_old = "rrs412_sat",
+         rrs443_V5_old = "rrs443_sat",
+         rrs490_V5_old = "rrs490_sat",
+         rrs510_V5_old = "rrs510_sat",
+         rrs560_V5_old = "rrs560_sat",
+         rrs665_V5_old = "rrs665_sat",
+         rrs412_V6_old = "CCIV6_RRS412",
+         rrs443_V6_old = "CCIV6_RRS443",
+         rrs490_V6_old = "CCIV6_RRS490",
+         rrs510_V6_old = "CCIV6_RRS510",
+         rrs560_V6_old = "CCIV6_RRS560",
+         rrs665_V6_old = "CCIV6_RRS665"
+         )
+
+
+for (date_i in 1:length(unique(V6_list$date))) {
+  
+###########################  opening V5
+  
+  V5_list_i <- V5_list %>% 
+    filter(date == unique(V6_list$date)[date_i])
+  
+  for(band_V5 in 1:nrow(V5_list_i)){
+    
+    band_i <- rast(V5_list_i$path[band_V5])
+    names(band_i) <- varnames(band_i)
+    
+    if (band_V5 == 1) {
+      V5 = band_i
+    }else{
+      V5 = rast(list(V5,band_i))
+    }
+  }
+###########################  opening V6
+  
+  V6 <- V6_list %>% 
+    filter(date == unique(V6_list$date)[date_i]) %>% 
+    pull(path) %>% 
+    rast()
+##############################  
+  names(V5) <- c("rrs412_V5_new", "rrs443_V5_new", "rrs490_V5_new", "rrs510_V5_new", "rrs560_V5_new", "rrs665_V5_new")
+  names(V6) <- c("rrs412_V6_new", "rrs443_V6_new", "rrs490_V6_new", "rrs510_V6_new", "rrs560_V6_new", "rrs665_V6_new")
+
+  stk <- rast(list(V5,V6))
+  
+  pts <- pts_all %>% 
+    dplyr::filter(Date_situ == unique(V6_list$date)[date_i]) %>% 
+    vect(geom = c("lon","lat"), crs = "EPSG:4326") %>% 
+    extract(stk,.) %>% 
+    dplyr::select(-ID)
+  
+  df_all <- pts_all %>% 
+    dplyr::filter(Date_situ == unique(V6_list$date)[date_i]) %>% 
+    cbind(pts)
+  
+  if (date_i == 1) {
+    output = df_all
+  }else{
+    output = rbind(output,df_all)
+  }
+}
+output %>% 
+  mutate(rrs490_V6_old = case_when(rrs490_V6_old < 0 ~ NA,
+                                   TRUE ~ rrs490_V6_old)) %>% 
+ggplot()+
+  geom_point(aes(x = rrs490_V5_new, y = rrs490_V6_new), color = "red")+
+  geom_point(aes(x = rrs490_V5_old, y = rrs490_V6_old), color = "blue",alpha=0.5)
+
+write.csv(output, "Output/CCI_V5_vs_V6_Simon.csv", row.names = F)
+
+
+```
+
+
