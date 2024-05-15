@@ -29,22 +29,22 @@ V6_list <- list.files("Data/CCI/V6", pattern = ".nc", full.names = T) %>%
          date = substr(name,1,8))
 
 if(length(unique(V5_list$date)) == length(unique(V6_list$date))){
-  print("There is the name number of images in V5 and in V6")
+  print("There is the same number of images in V5 and in V6")
 }else{
-  print("There isn't the name number of images in V5 and in V6")
+  print("There isn't the same number of images in V5 and in V6")
   
 }
 if(nrow(V5_list)/6 == length(unique(V6_list$date))){
-    print("There is the name number of bands in V5 and in V6")
+    print("There is the same number of bands in V5 and in V6")
 
 }else{
-    print("There isn't the name number of bands in V5 and in V6")
+    print("There isn't the same number of bands in V5 and in V6")
 
 }
 
 ```
 
-```{r compare}
+```{r compare with points}
 
 pts_all <- read_delim("Data/data_for_extraction_v6_match-ups.csv", 
     delim = ";", escape_double = FALSE, trim_ws = TRUE) %>% 
@@ -118,6 +118,59 @@ ggplot()+
   geom_point(aes(x = rrs490_V5_old, y = rrs490_V6_old), color = "blue",alpha=0.5)
 
 write.csv(output, "Output/CCI_V5_vs_V6_Simon.csv", row.names = F)
+```
+
+
+```{r Compare all the artic}
+
+  ext <-  ext(-180, 180 , 64 , 90)
+
+for (date_i in 1:length(unique(V6_list$date))) {
+  
+###########################  opening V5
+  
+  V5_list_i <- V5_list %>% 
+    filter(date == unique(V6_list$date)[date_i])
+  
+  for(band_V5 in 1:nrow(V5_list_i)){
+    
+    band_i <- rast(V5_list_i$path[band_V5])
+    names(band_i) <- varnames(band_i)
+    
+    if (band_V5 == 1) {
+      V5 = band_i
+    }else{
+      V5 = rast(list(V5,band_i))
+    }
+  }
+###########################  opening V6
+  
+  V6 <- V6_list %>% 
+    filter(date == unique(V6_list$date)[date_i]) %>% 
+    pull(path) %>% 
+    rast()
+##############################  
+  names(V5) <- c("rrs412_V5_new", "rrs443_V5_new", "rrs490_V5_new", "rrs510_V5_new", "rrs560_V5_new", "rrs665_V5_new")
+  names(V6) <- c("rrs412_V6_new", "rrs443_V6_new", "rrs490_V6_new", "rrs510_V6_new", "rrs560_V6_new", "rrs665_V6_new")
+
+  stk <- rast(list(V5,V6)) %>% 
+    crop(ext) %>% 
+    as.data.frame(xy=T)
+  
+  stk_long <- stk %>% 
+    mutate(ID = 1:nrow(.)) %>% 
+    pivot_longer(-c(x,y,ID), names_to = "bands", values_to = "ref") %>% 
+    mutate(dataset = substr(bands, 8,9),
+           wavelength = substr(bands,1,6)) %>% 
+    dplyr::select(-bands) %>% 
+    pivot_wider(names_from = dataset, values_from = ref)
+
+ggplot(stk_long) +
+  geom_point(aes(x = V5, y = V6))+
+  facet_wrap(~wavelength)
+  
+}
+
 
 
 ```
